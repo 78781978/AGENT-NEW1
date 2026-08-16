@@ -143,7 +143,9 @@ export async function GET(request: Request) {
       generatedAt: new Date().toISOString(),
       scope: globalMode ? "global" : "personal",
       metrics: {
-        users: new Set(conversations.map((item) => item.user_id)).size,
+        users: globalMode
+          ? adminUsers.length
+          : new Set(conversations.map((item) => item.user_id)).size || 1,
         conversations: conversations.length,
         tokensToday,
         costToday,
