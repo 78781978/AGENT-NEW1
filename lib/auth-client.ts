@@ -14,6 +14,7 @@ export type AuthSession = {
 
 const storageKey = "vie_supabase_session";
 const cookieName = "sb-access-token";
+const refreshCookieName = "sb-refresh-token";
 
 function requireConfig() {
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -21,17 +22,21 @@ function requireConfig() {
   }
 }
 
-function setAuthCookie(token: string) {
-  document.cookie = `${cookieName}=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax`;
+function setAuthCookies(session: AuthSession) {
+  document.cookie = `${cookieName}=${encodeURIComponent(session.access_token)}; path=/; max-age=604800; SameSite=Lax; Secure`;
+  if (session.refresh_token) {
+    document.cookie = `${refreshCookieName}=${encodeURIComponent(session.refresh_token)}; path=/; max-age=2592000; SameSite=Lax; Secure`;
+  }
 }
 
 function clearAuthCookie() {
   document.cookie = `${cookieName}=; path=/; max-age=0; SameSite=Lax`;
+  document.cookie = `${refreshCookieName}=; path=/; max-age=0; SameSite=Lax`;
 }
 
 export function saveSession(session: AuthSession) {
   localStorage.setItem(storageKey, JSON.stringify(session));
-  setAuthCookie(session.access_token);
+  setAuthCookies(session);
 }
 
 export function getStoredSession(): AuthSession | null {
@@ -104,16 +109,27 @@ export async function signOut() {
 }
 
 export async function getCurrentUser() {
-  const session = getStoredSession();
+  let session = getStoredSession();
   if (!session?.access_token) return null;
 
   try {
-    const user = await authFetch<AuthUser>("user", {
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-      },
-    });
-    setAuthCookie(session.access_token);
+    let user: AuthUser;
+    try {
+      user = await authFetch<AuthUser>("user", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+    } catch (error) {
+      if (!session.refresh_token) throw error;
+      session = await authFetch<AuthSession>("token?grant_type=refresh_token", {
+        method: "POST",
+        body: JSON.stringify({ refresh_token: session.refresh_token }),
+      });
+      saveSession(session);
+      user = await authFetch<AuthUser>("user", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+    }
+    setAuthCookies(session);
     return user;
   } catch {
     clearSession();

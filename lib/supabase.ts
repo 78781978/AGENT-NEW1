@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const cookieName = "sb-access-token";
+const refreshCookieName = "sb-refresh-token";
 
 export type SupabaseUser = {
   id: string;
@@ -36,6 +37,41 @@ function authHeaderFromRequest(request?: Request) {
   return undefined;
 }
 
+function cookieValue(request: Request | undefined, name: string) {
+  return (request?.headers.get("cookie") ?? "")
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+}
+
+async function refreshAccessToken(request?: Request) {
+  const cookieStore = await cookies();
+  const encodedRefreshToken = cookieValue(request, refreshCookieName) ?? cookieStore.get(refreshCookieName)?.value;
+  if (!encodedRefreshToken) return undefined;
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { apikey: supabaseKey!, "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: decodeURIComponent(encodedRefreshToken) }),
+  });
+  if (!response.ok) return undefined;
+
+  const session = (await response.json()) as { access_token?: string; refresh_token?: string };
+  if (!session.access_token) return undefined;
+
+  cookieStore.set(cookieName, session.access_token, {
+    path: "/", maxAge: 604800, sameSite: "lax", secure: process.env.NODE_ENV === "production",
+  });
+  if (session.refresh_token) {
+    cookieStore.set(refreshCookieName, session.refresh_token, {
+      path: "/", maxAge: 2592000, sameSite: "lax", secure: process.env.NODE_ENV === "production",
+    });
+  }
+  return `Bearer ${session.access_token}`;
+}
+
 export async function getAuthenticatedUser(request?: Request): Promise<SupabaseUser> {
   requireSupabaseConfig();
 
@@ -51,7 +87,7 @@ export async function getAuthenticatedUser(request?: Request): Promise<SupabaseU
     throw new Error("Musisz się zalogować.");
   }
 
-  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+  let response = await fetch(`${supabaseUrl}/auth/v1/user`, {
     cache: "no-store",
     headers: {
       apikey: supabaseKey!,
@@ -60,7 +96,13 @@ export async function getAuthenticatedUser(request?: Request): Promise<SupabaseU
   });
 
   if (!response.ok) {
-    throw new Error("Sesja wygasła. Zaloguj się ponownie.");
+    authorization = await refreshAccessToken(request);
+    if (!authorization) throw new Error("Sesja wygasła. Zaloguj się ponownie.");
+    response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      cache: "no-store",
+      headers: { apikey: supabaseKey!, Authorization: authorization },
+    });
+    if (!response.ok) throw new Error("Sesja wygasła. Zaloguj się ponownie.");
   }
 
   const user = (await response.json()) as Omit<SupabaseUser, "accessToken">;
