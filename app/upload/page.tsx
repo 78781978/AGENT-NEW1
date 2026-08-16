@@ -88,7 +88,21 @@ export default function UploadKnowledgePage() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!title.trim() || !content.trim() || isLoading) {
+    if (isLoading) {
+      return;
+    }
+
+    if (!title.trim()) {
+      setMessage("");
+      setProgress("");
+      setError("Wpisz tytuł dokumentu, np. „Zalecenia żywieniowe”.");
+      return;
+    }
+
+    if (!content.trim()) {
+      setMessage("");
+      setProgress("");
+      setError("Wklej treść dokumentu, który chcesz zapisać.");
       return;
     }
 
@@ -207,7 +221,7 @@ export default function UploadKnowledgePage() {
             </label>
 
             <div className="knowledge-actions">
-              <button type="submit" disabled={isLoading || !title.trim() || !content.trim()}>
+              <button type="submit" disabled={isLoading}>
                 {isLoading ? "Przetwarzam..." : "📤 Zapisz w bazie wiedzy"}
               </button>
               <button
