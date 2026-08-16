@@ -56,6 +56,7 @@ export default function KnowledgePage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [sources, setSources] = useState<string[]>([]);
+  const [searchAnswer, setSearchAnswer] = useState("");
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -115,6 +116,7 @@ export default function KnowledgePage() {
     setError("");
     setResults([]);
     setSources([]);
+    setSearchAnswer("");
 
     try {
       const response = await fetch("/api/search-knowledge", {
@@ -130,6 +132,7 @@ export default function KnowledgePage() {
 
       setResults(data.results ?? []);
       setSources(data.source_documents ?? []);
+      setSearchAnswer(typeof data.answer === "string" ? data.answer : "");
       setHasSearched(true);
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : "Błąd wyszukiwania.");
@@ -218,9 +221,9 @@ export default function KnowledgePage() {
             ) : null}
 
             {hasSearched && results.length === 0 && !error ? (
-              <div className="knowledge-source-note" role="status">
-                Nie mam informacji na ten temat w bazie wiedzy, dlatego nie mogę
-                udzielić odpowiedzi.
+              <div className="error-box" role="status" aria-live="polite">
+                {searchAnswer ||
+                  "Nie posiadam wiedzy na ten temat, ponieważ nie ma jej w bazie wiedzy."}
               </div>
             ) : null}
 
