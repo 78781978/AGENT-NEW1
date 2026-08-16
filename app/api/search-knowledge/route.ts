@@ -14,7 +14,13 @@ export async function POST(request: Request) {
   try {
     const user = await getAuthenticatedUser(request);
     const result = await searchKnowledge(query, 0.5, 5, user.id, user.accessToken);
-    return Response.json(result);
+    return Response.json({
+      ...result,
+      answer:
+        result.results.length > 0
+          ? null
+          : "Nie posiadam wiedzy na ten temat, ponieważ nie ma jej w bazie wiedzy.",
+    });
   } catch (error) {
     return Response.json(
       {
