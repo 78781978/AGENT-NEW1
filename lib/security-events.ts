@@ -11,7 +11,11 @@ type SecurityEventRow = {
   created_at: string;
 };
 
-export async function recordUserSecurityEvent(userId: string, type: SecurityEventType) {
+export async function recordUserSecurityEvent(
+  userId: string,
+  type: SecurityEventType,
+  accessToken?: string,
+) {
   recordSecurityEvent(type);
 
   await supabaseRequest("security_events", {
@@ -21,7 +25,7 @@ export async function recordUserSecurityEvent(userId: string, type: SecurityEven
       user_id: userId,
       event_type: type,
     }),
-  }).catch((error) => {
+  }, accessToken).catch((error) => {
     console.error("Nie udało się zapisać zdarzenia bezpieczeństwa:", error);
   });
 }
