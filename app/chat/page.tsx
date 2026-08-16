@@ -323,7 +323,11 @@ export default function Home() {
     return () => { active = false; };
   }, []);
 
-  async function updateProfile(update: { name?: string; preference?: { key: string; value: string } }) {
+  async function updateProfile(update: {
+    name?: string;
+    preference?: { key: string; value: string };
+    preferences?: Record<string, string>;
+  }) {
     try {
       const response = await fetch("/api/profile", {
         method: "PATCH",
@@ -338,7 +342,7 @@ export default function Home() {
     } catch (profileError) {
       const message = profileError instanceof Error ? profileError.message : "";
       if (!handleAuthTokenError(message)) {
-        console.warn("Profil nie został zapisany, ale wiadomość zostanie wysłana.", profileError);
+        setPersistenceError(`Preferencje: ${message || "nie udało się zapisać profilu."}`);
       }
       return null;
     }
@@ -347,15 +351,25 @@ export default function Home() {
   function profileDetails(text: string) {
     const nameMatch = text.match(/(?:mam na imi[eę]|nazywam si[eę]|jestem)\s+([a-ząćęłńóśźż-]+)/i);
     const singleName = !userName && /^[a-ząćęłńóśźż-]{2,30}$/i.test(text.trim()) ? text.trim() : "";
-    const preferenceMatch = text.match(/lubi[eę]\s+(.{2,80})/i);
-    const cityMatch = text.match(/mieszkam w\s+([a-ząćęłńóśźż -]{2,50})/i);
+    const preferencesToSave: Record<string, string> = {};
+    const remember = text.match(/zapami[eę]taj(?:,)?\s+(?:że\s+)?(.{2,180})/i)?.[1];
+    const likes = text.match(/\blubi[eę]\s+(.{2,100}?)(?=\s+(?:i\s+)?mieszkam\b|[.;!?]|$)/i)?.[1];
+    const dislikes = text.match(/\bnie\s+lubi[eę]\s+(.{2,100})/i)?.[1];
+    const prefers = text.match(/\b(?:wol[eę]|preferuj[eę])\s+(.{2,100})/i)?.[1];
+    const city = text.match(/\bmieszkam w\s+([a-ząćęłńóśźż -]{2,60}?)(?=[,.;!?]|$)/i)?.[1];
+    const work = text.match(/\bpracuj[eę]\s+jako\s+(.{2,80})/i)?.[1];
+    const interests = text.match(/\binteresuj[eę]\s+si[eę]\s+(.{2,100})/i)?.[1];
+    const clean = (value?: string) => value?.trim().replace(/[.!?]+$/, "");
+    if (clean(remember)) preferencesToSave["zapamiętane"] = clean(remember)!;
+    if (clean(likes)) preferencesToSave["co_lubię"] = clean(likes)!;
+    if (clean(dislikes)) preferencesToSave["nie_lubię"] = clean(dislikes)!;
+    if (clean(prefers)) preferencesToSave["preferuję"] = clean(prefers)!;
+    if (clean(city)) preferencesToSave["miasto"] = clean(city)!;
+    if (clean(work)) preferencesToSave["zawód"] = clean(work)!;
+    if (clean(interests)) preferencesToSave["zainteresowania"] = clean(interests)!;
     return {
       name: nameMatch?.[1] || singleName || undefined,
-      preference: cityMatch
-        ? { key: "miasto", value: cityMatch[1].trim() }
-        : preferenceMatch
-          ? { key: "lubię", value: preferenceMatch[1].trim() }
-          : undefined,
+      preferences: preferencesToSave,
     };
   }
 
@@ -409,7 +423,7 @@ export default function Home() {
         preferences,
       };
 
-      if (details.name || details.preference) {
+      if (details.name || Object.keys(details.preferences).length) {
         const savedProfile = await updateProfile(details);
         profileForMessage = {
           name: savedProfile?.name || details.name || userName || null,
