@@ -58,6 +58,7 @@ export default function KnowledgePage() {
   const [sources, setSources] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState("");
 
   async function loadDocuments() {
@@ -110,6 +111,7 @@ export default function KnowledgePage() {
     if (!cleanQuery || searching) return;
 
     setSearching(true);
+    setHasSearched(false);
     setError("");
     setResults([]);
     setSources([]);
@@ -128,6 +130,7 @@ export default function KnowledgePage() {
 
       setResults(data.results ?? []);
       setSources(data.source_documents ?? []);
+      setHasSearched(true);
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : "Błąd wyszukiwania.");
     } finally {
@@ -211,6 +214,13 @@ export default function KnowledgePage() {
             {sources.length > 0 ? (
               <div className="knowledge-source-note">
                 Źródła wyniku: {sources.join(", ")}
+              </div>
+            ) : null}
+
+            {hasSearched && results.length === 0 && !error ? (
+              <div className="knowledge-source-note" role="status">
+                Nie mam informacji na ten temat w bazie wiedzy, dlatego nie mogę
+                udzielić odpowiedzi.
               </div>
             ) : null}
 
