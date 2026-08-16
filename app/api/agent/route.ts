@@ -1050,6 +1050,7 @@ async function buildGroundedPostAndImage(
   query: string,
   requestContext: string,
   userId: string,
+  accessToken: string,
 ): Promise<{ steps: DirectToolStep[]; answer: string }> {
   const steps: DirectToolStep[] = [];
 
@@ -1078,6 +1079,7 @@ async function buildGroundedPostAndImage(
       inputEstimate: estimateTextTokens(`${query}\n${requestContext}`),
       model: "gemini-3.1-flash-lite",
       endpoint: "/api/agent",
+      accessToken,
     });
 
     const cleanText = removeToolJsonFromAnswer(research.text);
@@ -1202,7 +1204,12 @@ async function buildDirectToolResponse(
 
   if (needsFreshResearchBeforeImage(requestContext)) {
     const query = extractSearchQuery(requestContext);
-    const grounded = await buildGroundedPostAndImage(query, requestContext, userId);
+    const grounded = await buildGroundedPostAndImage(
+      query,
+      requestContext,
+      userId,
+      accessToken,
+    );
 
     return createDirectAnswerResponse(messages, grounded.steps, [grounded.answer], () =>
       recordUserSecurityEvent(userId, "filtered_output", accessToken),
@@ -2042,6 +2049,7 @@ export async function POST(request: Request) {
         inputEstimate: inputTokenEstimate,
         model: modelIds[selectedModel],
         endpoint: "/api/agent",
+        accessToken: user.accessToken,
       });
     },
     tools: {
