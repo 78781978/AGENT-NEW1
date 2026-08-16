@@ -12,22 +12,29 @@ type UserProfile = {
 };
 
 function extractProfileDetails(text: string) {
-  const clean = (value?: string) => value?.trim().replace(/[.!?]+$/, "");
+  const clean = (value?: string) =>
+    value?.trim().replace(/^[,;:\s]+|[,;:.!?\s]+$/g, "");
   const name = clean(
-    text.match(/(?:mam na imi[eę]|nazywam si[eę])\s+([a-ząćęłńóśźż-]+)/i)?.[1],
+    text.match(
+      /(?:mam na imi[eę]|nazywam si[eę]|moje imi[eę] to)\s+([a-ząćęłńóśźż-]+(?:\s+[a-ząćęłńóśźż-]+)?)(?=\s*(?:,|\.|;|!|\?|\bi\s+(?:lubi[eę]|uwielbiam|mieszkam)\b|$))/i,
+    )?.[1],
   );
   const likes = clean(
-    text.match(/\blubi[eę]\s+(.{2,120}?)(?=\s+(?:i\s+)?mieszkam\b|[.;!?]|$)/i)?.[1],
+    text.match(
+      /(?:\blubi[eę]\b|\buwielbiam\b|\bmoje hobby to\b|\binteresuj[eę] si[eę]\b)\s+(.{2,160}?)(?=\s+(?:i\s+)?(?:mieszkam|pochodz[eę]|jestem)\b|[.;!?]|$)/i,
+    )?.[1],
   );
   const city = clean(
-    text.match(/\bmieszkam w\s+([a-ząćęłńóśźż -]{2,60}?)(?=[,.;!?]|$)/i)?.[1],
+    text.match(
+      /(?:\bmieszkam w\b|\bpochodz[eę] z\b|\bjestem z\b)\s+([a-ząćęłńóśźż -]{2,60}?)(?=\s*(?:,|[.;!?]|$))/i,
+    )?.[1],
   );
 
   return {
     name,
     preferences: {
       ...(likes ? { "co_lubię": likes } : {}),
-      ...(city ? { miasto: city } : {}),
+      ...(city ? { "gdzie_mieszkam": city } : {}),
     },
   };
 }
@@ -46,23 +53,36 @@ async function rememberUserProfile(
     accessToken,
   );
   const current = rows[0];
-
-  await supabaseRequest<UserProfile[]>(
-    "user_profiles?on_conflict=id",
-    {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify({
-        id: userId,
-        name: details.name ?? current?.name ?? null,
-        preferences: {
-          ...(current?.preferences ?? {}),
-          ...details.preferences,
-        },
-      }),
+  const currentPreferences =
+    current?.preferences && typeof current.preferences === "object" && !Array.isArray(current.preferences)
+      ? current.preferences
+      : {};
+  const profile = {
+    name: details.name ?? current?.name ?? null,
+    preferences: {
+      ...currentPreferences,
+      ...details.preferences,
     },
-    accessToken,
-  );
+  };
+
+  if (current) {
+    await supabaseRequest<UserProfile[]>(
+      `user_profiles?id=eq.${encodeURIComponent(userId)}`,
+      {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(profile),
+      },
+      accessToken,
+    );
+    return;
+  }
+
+  await supabaseRequest<UserProfile[]>("user_profiles", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ id: userId, ...profile }),
+  }, accessToken);
 }
 
 function authStatus(error: unknown) {
