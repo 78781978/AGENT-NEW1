@@ -261,6 +261,25 @@ function shouldShowToolPart(part: ToolPart) {
   return toolName(part) !== "calculator";
 }
 
+function extractProfileDetails(text: string) {
+  const clean = (value?: string) => value?.trim().replace(/[.!?]+$/, "");
+  const name = clean(text.match(/(?:mam na imi[eę]|nazywam si[eę])\s+([a-ząćęłńóśźż-]+)/i)?.[1]);
+  const likes = clean(
+    text.match(/\blubi[eę]\s+(.{2,100}?)(?=\s+(?:i\s+)?mieszkam\b|[.;!?]|$)/i)?.[1],
+  );
+  const city = clean(
+    text.match(/\bmieszkam w\s+([a-ząćęłńóśźż -]{2,60}?)(?=[,.;!?]|$)/i)?.[1],
+  );
+
+  return {
+    name,
+    preferences: {
+      ...(likes ? { "co_lubię": likes } : {}),
+      ...(city ? { miasto: city } : {}),
+    },
+  };
+}
+
 export default function AgentPage() {
   const [input, setInput] = useState("");
   const [pastedFile, setPastedFile] = useState<File | null>(null);
@@ -397,6 +416,23 @@ export default function AgentPage() {
     clearError();
     setPersistenceError("");
     setInput("");
+
+    if (trimmed) {
+      const profile = extractProfileDetails(trimmed);
+      if (profile.name || Object.keys(profile.preferences).length) {
+        const profileResponse = await fetch("/api/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(profile),
+        });
+        const profileData = await readJsonResponse(profileResponse);
+        if (!profileResponse.ok) {
+          setPersistenceError(
+            `Preferencje: ${String(profileData.error || "nie udało się zapisać profilu.")}`,
+          );
+        }
+      }
+    }
 
     const activeConversationId = conversationId ?? (await createConversation(trimmed || "Analiza obrazu"));
     if (trimmed) {
