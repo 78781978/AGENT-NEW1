@@ -117,7 +117,37 @@ export default function SecurityPage() {
         }
 
         if (isMounted) {
-          setStats(data.stats);
+          const recentCount = (type: string) =>
+            data.stats!.recentEvents.filter((event) => event.type === type).length;
+          const normalizedStats = {
+            ...data.stats,
+            acceptedMessages: Math.max(
+              Number(data.stats.acceptedMessages) || 0,
+              recentCount("accepted_message"),
+            ),
+            blockedInputs: Math.max(
+              Number(data.stats.blockedInputs) || 0,
+              recentCount("blocked_input"),
+            ),
+            filteredOutputs: Math.max(
+              Number(data.stats.filteredOutputs) || 0,
+              recentCount("filtered_output"),
+            ),
+            rateLimited: Math.max(
+              Number(data.stats.rateLimited) || 0,
+              recentCount("rate_limited"),
+            ),
+            tokenLimited: Math.max(
+              Number(data.stats.tokenLimited) || 0,
+              recentCount("token_limited"),
+            ),
+          };
+          normalizedStats.abuseAttempts =
+            normalizedStats.blockedInputs +
+            normalizedStats.filteredOutputs +
+            normalizedStats.rateLimited +
+            normalizedStats.tokenLimited;
+          setStats(normalizedStats);
           setError("");
         }
       } catch (statsError) {
