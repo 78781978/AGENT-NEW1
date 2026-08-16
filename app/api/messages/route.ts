@@ -108,10 +108,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nie masz dostępu do tej rozmowy." }, { status: 403 });
     }
 
-    if (body.role === "user" && body.content?.trim()) {
-      await rememberUserProfile(user.id, user.accessToken, body.content);
-    }
-
     await supabaseRequest("messages", {
       method: "POST",
       headers: { Prefer: "return=minimal" },
@@ -131,6 +127,12 @@ export async function POST(request: Request) {
       },
       user.accessToken,
     );
+
+    if (body.role === "user" && body.content?.trim()) {
+      await rememberUserProfile(user.id, user.accessToken, body.content).catch((error) => {
+        console.error("Nie udało się zaktualizować profilu użytkownika:", error);
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
