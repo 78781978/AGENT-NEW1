@@ -67,38 +67,48 @@ export default function SecurityPage() {
   const [error, setError] = useState("");
 
   const monitoringCards = useMemo(
-    () => [
+    () => {
+      const recentCount = (type: string) =>
+        stats.recentEvents.filter((event) => event.type === type).length;
+      const acceptedMessages = Math.max(stats.acceptedMessages, recentCount("accepted_message"));
+      const blockedInputs = Math.max(stats.blockedInputs, recentCount("blocked_input"));
+      const filteredOutputs = Math.max(stats.filteredOutputs, recentCount("filtered_output"));
+      const rateLimited = Math.max(stats.rateLimited, recentCount("rate_limited"));
+      const tokenLimited = Math.max(stats.tokenLimited, recentCount("token_limited"));
+
+      return [
       {
         title: "Próby nadużyć",
-        value: stats.abuseAttempts,
+        value: blockedInputs + filteredOutputs + rateLimited + tokenLimited,
         description: "Suma zablokowanych inputów, filtrów outputu oraz trafień limitów.",
       },
       {
         title: "Poprawne wiadomości",
-        value: stats.acceptedMessages,
+        value: acceptedMessages,
         description: "Wiadomości, które przeszły walidację i trafiły do agenta.",
       },
       {
         title: "Zablokowane inputy",
-        value: stats.blockedInputs,
+        value: blockedInputs,
         description: "Wiadomości zatrzymane przed wysłaniem do modelu.",
       },
       {
         title: "Trafienia limitów",
-        value: stats.rateLimited + stats.tokenLimited,
+        value: rateLimited + tokenLimited,
         description: "Przekroczenia limitu wiadomości lub dziennego budżetu tokenów.",
       },
       {
         title: "Limit wiadomości",
-        value: stats.rateLimited,
+        value: rateLimited,
         description: "Ile razy zadziałał limit 50 wiadomości na godzinę.",
       },
       {
         title: "Limit tokenów",
-        value: stats.tokenLimited,
+        value: tokenLimited,
         description: "Ile razy użytkownik przekroczył dzienny budżet tokenów.",
       },
-    ],
+      ];
+    },
     [stats],
   );
 
@@ -206,7 +216,7 @@ export default function SecurityPage() {
         <section className="security-card security-wide">
           <div>
             <h2>Monitoring bezpieczeństwa</h2>
-            <span>{isLoading ? "ładowanie" : "na żywo"}</span>
+            <span>{isLoading ? "ładowanie" : "na żywo · licznik v2"}</span>
           </div>
           <p>
             Liczniki są pobierane z Supabase i pokazują zdarzenia zalogowanego użytkownika.
