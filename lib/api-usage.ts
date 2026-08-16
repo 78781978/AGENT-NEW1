@@ -80,13 +80,15 @@ export function normalizeTokenUsage(
   };
 }
 
-export async function getDailyTokenUsage(userId: string) {
+export async function getDailyTokenUsage(userId: string, accessToken?: string) {
   const rows = await supabaseRequest<ApiUsageRow[]>(
     [
       "api_usage?select=tokens_input,tokens_output",
       `user_id=eq.${encodeURIComponent(userId)}`,
       `created_at=gte.${encodeURIComponent(todayStartIso())}`,
     ].join("&"),
+    {},
+    accessToken,
   ).catch(() => []);
 
   return rows.reduce(
@@ -96,7 +98,7 @@ export async function getDailyTokenUsage(userId: string) {
 }
 
 export async function assertDailyTokenBudget(user: SupabaseUser) {
-  const usedTokens = await getDailyTokenUsage(user.id);
+  const usedTokens = await getDailyTokenUsage(user.id, user.accessToken);
 
   if (usedTokens >= dailyTokenLimit) {
     return {
@@ -122,6 +124,7 @@ export async function logApiUsage(args: {
   outputEstimate?: number;
   model: string;
   endpoint: string;
+  accessToken?: string;
 }) {
   const tokens = normalizeTokenUsage(args.usage, args.inputEstimate, args.outputEstimate);
 
@@ -137,7 +140,7 @@ export async function logApiUsage(args: {
       model: args.model,
       endpoint: args.endpoint,
     }),
-  }).catch((error) => {
+  }, args.accessToken).catch((error) => {
     console.error("Nie udalo sie zapisac zuzycia tokenow:", error);
   });
 }
