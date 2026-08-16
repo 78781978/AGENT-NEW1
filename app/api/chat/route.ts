@@ -553,24 +553,24 @@ export async function POST(request: Request) {
   const inputValidation = validateUserInput(getLatestUserMessageText(messages));
 
   if (!inputValidation.ok) {
-    await recordUserSecurityEvent(user.id, "blocked_input");
+    await recordUserSecurityEvent(user.id, "blocked_input", user.accessToken);
     return createSecurityResponse(messages, blockedInputMessage);
   }
 
   const rateLimit = checkRateLimit(user.id);
 
   if (!rateLimit.ok) {
-    await recordUserSecurityEvent(user.id, "rate_limited");
+    await recordUserSecurityEvent(user.id, "rate_limited", user.accessToken);
     return createSecurityResponse(messages, rateLimit.message);
   }
 
-  await recordUserSecurityEvent(user.id, "accepted_message");
+  await recordUserSecurityEvent(user.id, "accepted_message", user.accessToken);
 
   const safeMessages = sanitizeMessages(messages);
   const tokenBudget = await assertDailyTokenBudget(user);
 
   if (!tokenBudget.ok) {
-    await recordUserSecurityEvent(user.id, "token_limited");
+    await recordUserSecurityEvent(user.id, "token_limited", user.accessToken);
     return createSecurityResponse(messages, tokenBudget.message);
   }
 
@@ -579,7 +579,7 @@ export async function POST(request: Request) {
   const result = streamText({
     model: google(modelIds[selectedModel]),
     experimental_transform: outputFilterTransform(() =>
-      recordUserSecurityEvent(user.id, "filtered_output"),
+      recordUserSecurityEvent(user.id, "filtered_output", user.accessToken),
     ),
     system: withResponseLanguage(request, `${prompts[selectedMode]}${internetRules}${knowledgeRules}${securityPrompt}\n\n${
       profileForPrompt.name
