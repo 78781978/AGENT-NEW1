@@ -3,35 +3,41 @@ export function splitIntoChunks(
   chunkSize = 500,
   overlap = 50,
 ): string[] {
-  const normalizedText = text.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
+  const normalizedText = text.replace(/\s+/g, " ").trim();
 
   if (!normalizedText) {
     return [];
   }
 
-  const sentences = normalizedText
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
-
+  const words = normalizedText.split(" ").filter(Boolean);
   const chunks: string[] = [];
-  let currentChunk = "";
+  let start = 0;
 
-  for (const sentence of sentences) {
-    const nextChunk = currentChunk ? `${currentChunk} ${sentence}` : sentence;
+  while (start < words.length) {
+    let end = start;
+    let length = 0;
 
-    if (nextChunk.length <= chunkSize || !currentChunk) {
-      currentChunk = nextChunk;
-      continue;
+    while (end < words.length) {
+      const addedLength = words[end].length + (end > start ? 1 : 0);
+      if (length + addedLength > chunkSize && end > start) break;
+      length += addedLength;
+      end += 1;
     }
 
-    chunks.push(currentChunk.trim());
-    const overlapText = currentChunk.slice(Math.max(0, currentChunk.length - overlap)).trim();
-    currentChunk = overlapText ? `${overlapText} ${sentence}` : sentence;
-  }
+    chunks.push(words.slice(start, end).join(" "));
+    if (end >= words.length) break;
 
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim());
+    let nextStart = end;
+    let overlapLength = 0;
+    while (nextStart > start) {
+      const previousWordLength = words[nextStart - 1].length + (overlapLength ? 1 : 0);
+      if (overlapLength + previousWordLength > overlap) break;
+      overlapLength += previousWordLength;
+      nextStart -= 1;
+    }
+
+    // Zawsze przesuwamy okno naprzód, także gdy pojedyncze słowo jest bardzo długie.
+    start = nextStart > start ? nextStart : end;
   }
 
   return chunks;
