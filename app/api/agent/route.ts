@@ -1180,7 +1180,12 @@ function buildCompanyClarificationAnswer(
   ].join("\n");
 }
 
-async function buildDirectToolResponse(text: string, messages: UIMessage[], userId: string) {
+async function buildDirectToolResponse(
+  text: string,
+  messages: UIMessage[],
+  userId: string,
+  accessToken: string,
+) {
   const plan = detectToolPlan(text);
   const businessTask = isBusinessRevenueTask(text);
   const previousUserText = getPreviousUserText(messages);
@@ -1200,7 +1205,7 @@ async function buildDirectToolResponse(text: string, messages: UIMessage[], user
     const grounded = await buildGroundedPostAndImage(query, requestContext, userId);
 
     return createDirectAnswerResponse(messages, grounded.steps, [grounded.answer], () =>
-      recordUserSecurityEvent(userId, "filtered_output"),
+      recordUserSecurityEvent(userId, "filtered_output", accessToken),
     );
   }
 
@@ -1983,24 +1988,24 @@ export async function POST(request: Request) {
   const inputValidation = validateUserInput(getLatestUserMessageText(messages));
 
   if (!inputValidation.ok) {
-    await recordUserSecurityEvent(user.id, "blocked_input");
+    await recordUserSecurityEvent(user.id, "blocked_input", user.accessToken);
     return createSecurityResponse(messages, blockedInputMessage);
   }
 
   const rateLimit = checkRateLimit(user.id);
 
   if (!rateLimit.ok) {
-    await recordUserSecurityEvent(user.id, "rate_limited");
+    await recordUserSecurityEvent(user.id, "rate_limited", user.accessToken);
     return createSecurityResponse(messages, rateLimit.message);
   }
 
-  await recordUserSecurityEvent(user.id, "accepted_message");
+  await recordUserSecurityEvent(user.id, "accepted_message", user.accessToken);
 
   const safeMessages = sanitizeMessages(messages);
   const tokenBudget = await assertDailyTokenBudget(user);
 
   if (!tokenBudget.ok) {
-    await recordUserSecurityEvent(user.id, "token_limited");
+    await recordUserSecurityEvent(user.id, "token_limited", user.accessToken);
     return createSecurityResponse(messages, tokenBudget.message);
   }
 
@@ -2010,7 +2015,12 @@ export async function POST(request: Request) {
   const profileContext = userProfile
     ? `\n\n## PROFIL UŻYTKOWNIKA\nImię: ${userProfile.name || "nie podano"}.\nPreferencje: ${JSON.stringify(userProfile.preferences ?? {})}. Uwzględniaj te informacje naturalnie i nie pytaj ponownie o dane, które są już zapisane.`
     : "";
-  const directToolResponse = await buildDirectToolResponse(latestUserText, safeMessages, user.id);
+  const directToolResponse = await buildDirectToolResponse(
+    latestUserText,
+    safeMessages,
+    user.id,
+    user.accessToken,
+  );
   const forceGroundingForCurrentRequest = needsFreshResearchBeforeImage(latestUserText);
 
   if (directToolResponse) {
@@ -2020,7 +2030,7 @@ export async function POST(request: Request) {
   const result = streamText({
     model: google(modelIds[selectedModel]),
     experimental_transform: outputFilterTransform(() =>
-      recordUserSecurityEvent(user.id, "filtered_output"),
+      recordUserSecurityEvent(user.id, "filtered_output", user.accessToken),
     ),
     system: withResponseLanguage(request, `${prompts[selectedMode]}${internetRules}${knowledgeRules}${profileContext}${securityPrompt}`),
     messages: await convertToModelMessages(safeMessages),
