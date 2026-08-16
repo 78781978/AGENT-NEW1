@@ -18,7 +18,7 @@ import {
   validateUserInput,
 } from "../../../lib/security";
 import { recordUserSecurityEvent } from "../../../lib/security-events";
-import { getAuthenticatedUser } from "../../../lib/supabase";
+import { getAuthenticatedUser, supabaseRequest } from "../../../lib/supabase";
 import { withResponseLanguage } from "../../../lib/language";
 import {
   convertToModelMessages,
@@ -1956,6 +1956,20 @@ async function readWebPage(url: string) {
   }
 }
 
+type AgentUserProfile = {
+  name: string | null;
+  preferences: Record<string, string> | null;
+};
+
+async function getAgentUserProfile(userId: string, accessToken: string) {
+  const rows = await supabaseRequest<AgentUserProfile[]>(
+    `user_profiles?select=name,preferences&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    {},
+    accessToken,
+  ).catch(() => []);
+  return rows[0] ?? null;
+}
+
 export async function POST(request: Request) {
   const user = await getAuthenticatedUser(request);
   const { messages, mode, model } = (await request.json()) as {
@@ -1992,6 +2006,10 @@ export async function POST(request: Request) {
 
   const inputTokenEstimate = estimateMessagesTokens(safeMessages);
   const latestUserText = getLatestUserText(safeMessages);
+  const userProfile = await getAgentUserProfile(user.id, user.accessToken);
+  const profileContext = userProfile
+    ? `\n\n## PROFIL UŻYTKOWNIKA\nImię: ${userProfile.name || "nie podano"}.\nPreferencje: ${JSON.stringify(userProfile.preferences ?? {})}. Uwzględniaj te informacje naturalnie i nie pytaj ponownie o dane, które są już zapisane.`
+    : "";
   const directToolResponse = await buildDirectToolResponse(latestUserText, safeMessages, user.id);
   const forceGroundingForCurrentRequest = needsFreshResearchBeforeImage(latestUserText);
 
@@ -2004,7 +2022,7 @@ export async function POST(request: Request) {
     experimental_transform: outputFilterTransform(() =>
       recordUserSecurityEvent(user.id, "filtered_output"),
     ),
-    system: withResponseLanguage(request, `${prompts[selectedMode]}${internetRules}${knowledgeRules}${securityPrompt}`),
+    system: withResponseLanguage(request, `${prompts[selectedMode]}${internetRules}${knowledgeRules}${profileContext}${securityPrompt}`),
     messages: await convertToModelMessages(safeMessages),
     stopWhen: stepCountIs(maxSteps),
     onFinish: async ({ usage }) => {
