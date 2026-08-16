@@ -18,18 +18,20 @@ async function getProfile(userId: string, accessToken: string) {
 }
 
 async function upsertProfile(
+  userId: string,
   accessToken: string,
   name: string | null,
   preferences: Record<string, string>,
 ) {
   const rows = await supabaseRequest<Profile[]>(
-    "rpc/upsert_current_user_profile",
+    "user_profiles?on_conflict=id",
     {
       method: "POST",
-      headers: { Prefer: "return=representation" },
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
       body: JSON.stringify({
-        profile_name: name,
-        profile_preferences: preferences,
+        id: userId,
+        name,
+        preferences,
       }),
     },
     accessToken,
@@ -67,7 +69,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ profile: existingProfile });
     }
 
-    const profile = await upsertProfile(user.accessToken, user.email?.split("@")[0] ?? null, {});
+    const profile = await upsertProfile(user.id, user.accessToken, user.email?.split("@")[0] ?? null, {});
 
     return NextResponse.json({ profile });
   } catch (error) {
@@ -84,6 +86,7 @@ export async function PATCH(request: Request) {
     const body = (await request.json()) as {
       name?: string;
       preference?: { key: string; value: string };
+      preferences?: Record<string, string>;
     };
     const currentProfile = (await getProfile(user.id, user.accessToken)) ?? {
       id: user.id,
@@ -96,7 +99,14 @@ export async function PATCH(request: Request) {
       preferences[body.preference.key] = body.preference.value;
     }
 
+    for (const [key, value] of Object.entries(body.preferences ?? {})) {
+      if (key.trim() && typeof value === "string" && value.trim()) {
+        preferences[key.trim()] = value.trim();
+      }
+    }
+
     const profile = await upsertProfile(
+      user.id,
       user.accessToken,
       body.name ?? currentProfile.name ?? user.email?.split("@")[0] ?? null,
       preferences,
