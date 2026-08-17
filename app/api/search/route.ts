@@ -342,10 +342,27 @@ function buildSafeFallback(query: string, error?: unknown) {
 
 export async function POST(request: Request) {
   const user = await getAuthenticatedUser(request);
-  const body = (await request.json().catch(() => null)) as { query?: unknown } | null;
-  const query = typeof body?.query === "string" ? body.query.trim() : "";
+  const body = (await request.json().catch(() => null)) as {
+    query?: unknown;
+    history?: Array<{ role?: unknown; text?: unknown }>;
+  } | null;
+  const rawQuery = typeof body?.query === "string" ? body.query.trim() : "";
+  const previousLocalQuestion = [...(body?.history ?? [])]
+    .slice(0, -1)
+    .reverse()
+    .find(
+      (message) =>
+        message.role === "user" &&
+        typeof message.text === "string" &&
+        needsLocalContext(message.text),
+    );
+  const isShortLocationReply = /^[\p{L}-]{3,40}$/u.test(rawQuery);
+  const query =
+    isShortLocationReply && typeof previousLocalQuestion?.text === "string"
+      ? `${previousLocalQuestion.text} w ${rawQuery}`
+      : rawQuery;
 
-  if (!query) {
+  if (!rawQuery) {
     return Response.json({ error: "Wpisz pytanie albo adres strony." }, { status: 400 });
   }
 
