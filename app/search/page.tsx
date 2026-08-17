@@ -97,7 +97,13 @@ export default function SearchPage() {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ query: trimmed }),
+        body: JSON.stringify({
+          query: trimmed,
+          history: [...messages, userMessage].map((message) => ({
+            role: message.role,
+            text: message.text,
+          })),
+        }),
       });
       const data = (await response.json()) as {
         text?: string;
