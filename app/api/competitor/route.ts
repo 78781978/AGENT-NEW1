@@ -6,7 +6,7 @@ import {
 } from "../../../lib/api-usage";
 import { getAuthenticatedUser } from "../../../lib/supabase";
 import { withResponseLanguage } from "../../../lib/language";
-import { jsonSchema, stepCountIs, streamText, tool } from "ai";
+import { generateText, stepCountIs } from "ai";
 
 export const maxDuration = 60;
 
@@ -24,7 +24,6 @@ type ReadWebPageInput = {
   url: string;
 };
 
-const maxSteps = 10;
 const isSearchGroundingEnabled = process.env.ENABLE_SEARCH_GROUNDING === "true";
 
 const systemPrompt = `
@@ -259,51 +258,24 @@ export async function POST(request: Request) {
       "Wykonaj analize konkurencji zgodnie z formatem. Dla kazdej firmy uzyj dostepnych narzedzi przynajmniej raz, jesli to mozliwe.",
     ].join("\n");
 
-    const result = streamText({
+    const result = await generateText({
       model: google("gemini-3.1-flash-lite"),
       system: withResponseLanguage(request, systemPrompt),
       prompt,
-      tools: {
-        ...useSearchGrounding(),
-        searchWikipedia: tool({
-          description: "Wyszukuje firme lub produkt w Wikipedii i zwraca streszczenie oraz link.",
-          inputSchema: jsonSchema<WikipediaInput>({
-            type: "object",
-            properties: {
-              query: { type: "string", description: "Nazwa firmy, produktu albo tematu." },
-              language: { type: "string", description: "Kod jezyka, domyslnie pl." },
-            },
-            required: ["query"],
-            additionalProperties: false,
-          }),
-          execute: async ({ query, language = "pl" }) => searchWikipedia(query, language),
-        }),
-        readWebPage: tool({
-          description: "Czyta publiczna strone WWW po adresie URL.",
-          inputSchema: jsonSchema<ReadWebPageInput>({
-            type: "object",
-            properties: {
-              url: { type: "string", description: "Pelny adres URL." },
-            },
-            required: ["url"],
-            additionalProperties: false,
-          }),
-          execute: async ({ url }) => readWebPage(url),
-        }),
-      },
-      stopWhen: stepCountIs(maxSteps),
-      onFinish: async ({ usage }) => {
-        await logApiUsage({
-          userId: user.id,
-          usage,
-          inputEstimate: estimateTextTokens(`${systemPrompt}\n${prompt}`),
-          model: "gemini-3.1-flash-lite",
-          endpoint: "/api/competitor",
-        });
-      },
+      tools: useSearchGrounding(),
+      stopWhen: stepCountIs(5),
     });
-
-    return result.toTextStreamResponse();
+    await logApiUsage({
+      userId: user.id,
+      usage: result.usage,
+      inputEstimate: estimateTextTokens(`${systemPrompt}\n${prompt}`),
+      model: "gemini-3.1-flash-lite",
+      endpoint: "/api/competitor",
+      accessToken: user.accessToken,
+    });
+    return new Response(result.text.trim() || localCompetitorFallback(companies, context), {
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
   } catch {
     return new Response(localCompetitorFallback(companies, context), {
       headers: {
