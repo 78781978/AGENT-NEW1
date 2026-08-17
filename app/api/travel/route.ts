@@ -187,7 +187,52 @@ function detectCities(text: string) {
 }
 
 function extractUnknownDestination(text: string) {
-  return text.match(/(?:do|w|we)\s+([A-ZĄĆĘŁŃÓŚŹŻ][\p{L}-]{2,})/u)?.[1];
+  const named = text.match(/(?:do|w|we|miasto|mieście)\s+([A-ZĄĆĘŁŃÓŚŹŻ][\p{L}-]{2,})/u)?.[1];
+  if (named) return named;
+
+  const bare = text.trim();
+  return /^[\p{L}-]{3,40}$/u.test(bare) ? bare : undefined;
+}
+
+const countryCurrencies: Record<string, string> = {
+  AT: "EUR", BE: "EUR", CH: "CHF", CZ: "CZK", DE: "EUR", DK: "DKK",
+  ES: "EUR", FI: "EUR", FR: "EUR", GB: "GBP", GR: "EUR", HR: "EUR",
+  HU: "HUF", IE: "EUR", IT: "EUR", JP: "JPY", NL: "EUR", NO: "NOK",
+  PL: "PLN", PT: "EUR", RO: "RON", SE: "SEK", SK: "EUR", US: "USD",
+};
+
+async function resolveCity(name: string): Promise<CityInfo | undefined> {
+  try {
+    const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
+    url.searchParams.set("name", name);
+    url.searchParams.set("count", "1");
+    url.searchParams.set("language", "pl");
+    url.searchParams.set("format", "json");
+    const response = await fetchWithTimeout(url, {}, 7000);
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as {
+      results?: Array<{
+        name?: string; country?: string; country_code?: string;
+        latitude?: number; longitude?: number;
+      }>;
+    };
+    const result = data.results?.[0];
+    if (!result?.name || !result.country_code || result.latitude == null || result.longitude == null) {
+      return undefined;
+    }
+    const countryCode = result.country_code.toUpperCase();
+    return {
+      city: result.name,
+      country: result.country || countryCode,
+      countryCode,
+      currency: countryCurrencies[countryCode] || "EUR",
+      latitude: result.latitude,
+      longitude: result.longitude,
+      language: "pl",
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function extractBudgetPln(text: string) {
@@ -625,6 +670,10 @@ export async function POST(request: Request) {
   const unknownDestination = destinations.length === 0 ? extractUnknownDestination(text) : undefined;
 
   if (unknownDestination) {
+    const resolvedCity = await resolveCity(unknownDestination);
+    if (resolvedCity) {
+      destinations.push(resolvedCity);
+    } else {
     const output = {
       ok: false,
       source: "validation",
@@ -657,7 +706,8 @@ export async function POST(request: Request) {
       },
     });
 
-    return createUIMessageStreamResponse({ stream });
+      return createUIMessageStreamResponse({ stream });
+    }
   }
 
   if (destinations.length === 0) {
