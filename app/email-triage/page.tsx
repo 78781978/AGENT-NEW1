@@ -144,19 +144,12 @@ export default function EmailTriagePage() {
         body: JSON.stringify({ emails }),
       });
 
-      if (!response.ok || !response.body) {
+      if (!response.ok) {
         const data = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error || "Agent nie zwrócił analizy maili.");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        setResult((current) => current + decoder.decode(value, { stream: true }));
-      }
+      setResult(await response.text());
     } catch (submitError) {
       setError(
         submitError instanceof Error
