@@ -1,5 +1,11 @@
 ﻿import { google } from "@ai-sdk/google";
-import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from "ai";
+import {
+  convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  generateText,
+  type UIMessage,
+} from "ai";
 import {
   assertDailyTokenBudget,
   estimateMessagesTokens,
@@ -10,7 +16,6 @@ import { formatWashGoKnowledge } from "../../../lib/washgo-data";
 import { withResponseLanguage } from "../../../lib/language";
 
 export const maxDuration = 30;
-const maxSteps = 3;
 
 const emailCommandSpec = `
 ## Komenda biznesowa: /email
@@ -189,23 +194,36 @@ export async function POST(request: Request) {
 
   const inputTokenEstimate = estimateMessagesTokens(messages);
 
-  const result = streamText({
-    model: google("gemini-3.1-flash-lite"),
-    system: withResponseLanguage(request, washGoPrompt),
-    messages: await convertToModelMessages(messages),
-    stopWhen: stepCountIs(maxSteps),
-    onFinish: async ({ usage }) => {
-      await logApiUsage({
-        userId: user.id,
-        usage,
-        inputEstimate: inputTokenEstimate,
-        model: "gemini-3.1-flash-lite",
-        endpoint: "/api/wash",
-      });
+  let answer: string;
+  try {
+    const result = await generateText({
+      model: google("gemini-3.1-flash-lite"),
+      system: withResponseLanguage(request, washGoPrompt),
+      messages: await convertToModelMessages(messages),
+    });
+    answer = result.text.trim();
+    await logApiUsage({
+      userId: user.id,
+      usage: result.usage,
+      inputEstimate: inputTokenEstimate,
+      model: "gemini-3.1-flash-lite",
+      endpoint: "/api/wash",
+      accessToken: user.accessToken,
+    });
+  } catch {
+    answer = "Nie udało mi się teraz przygotować pełnej kampanii. Spróbuj ponownie za chwilę - Twoje zadanie pozostało w rozmowie. Jeśli sprawa jest pilna, podaj jedną usługę do promocji, a przygotuję krótszy post i wezwanie do rezerwacji.";
+  }
+
+  const stream = createUIMessageStream({
+    originalMessages: messages,
+    execute({ writer }) {
+      writer.write({ type: "text-start", id: "wash-answer" } as never);
+      writer.write({ type: "text-delta", id: "wash-answer", delta: answer } as never);
+      writer.write({ type: "text-end", id: "wash-answer" } as never);
+      writer.write({ type: "finish", finishReason: "stop" } as never);
     },
   });
-
-  return result.toUIMessageStreamResponse();
+  return createUIMessageStreamResponse({ stream });
 }
 
 
