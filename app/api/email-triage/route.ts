@@ -6,7 +6,7 @@ import {
 } from "../../../lib/api-usage";
 import { getAuthenticatedUser } from "../../../lib/supabase";
 import { withResponseLanguage } from "../../../lib/language";
-import { streamText } from "ai";
+import { generateText } from "ai";
 
 export const maxDuration = 30;
 
@@ -143,22 +143,22 @@ export async function POST(request: Request) {
     }
 
     const prompt = emails.map((email, index) => `MAIL ${index + 1}\n${email}`).join("\n\n---\n\n");
-    const result = streamText({
+    const result = await generateText({
       model: google("gemini-3.1-flash-lite"),
       system: withResponseLanguage(request, systemPrompt),
       prompt,
-      onFinish: async ({ usage }) => {
-        await logApiUsage({
-          userId: user.id,
-          usage,
-          inputEstimate: estimateTextTokens(`${systemPrompt}\n${prompt}`),
-          model: "gemini-3.1-flash-lite",
-          endpoint: "/api/email-triage",
-        });
-      },
     });
-
-    return result.toTextStreamResponse();
+    await logApiUsage({
+      userId: user.id,
+      usage: result.usage,
+      inputEstimate: estimateTextTokens(`${systemPrompt}\n${prompt}`),
+      model: "gemini-3.1-flash-lite",
+      endpoint: "/api/email-triage",
+      accessToken: user.accessToken,
+    });
+    return new Response(result.text.trim(), {
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
   } catch {
     return new Response(localTriage(emails), {
       headers: {
