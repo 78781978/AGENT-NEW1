@@ -101,25 +101,28 @@ function formatBookingDate(date: Date) {
 }
 
 function generateAvailableSlots() {
-  const augustSlots = [
-    ["2026-08-01", "08:00"],
-    ["2026-08-03", "10:00"],
-    ["2026-08-04", "12:00"],
-    ["2026-08-05", "14:00"],
-    ["2026-08-06", "16:00"],
-    ["2026-08-07", "08:00"],
-    ["2026-08-08", "10:00"],
-    ["2026-08-10", "12:00"],
-    ["2026-08-11", "14:00"],
-    ["2026-08-12", "16:00"],
-  ];
+  const weekdayHours = ["08:00", "10:00", "12:00", "14:00", "16:00"];
+  const saturdayHours = ["08:00", "10:00", "12:00"];
+  const slots: string[] = [];
 
-  return augustSlots.map(([date, hour]) => `${formatBookingDate(new Date(`${date}T12:00:00`))}, ${hour}`);
+  for (let day = 1; day <= 30; day += 1) {
+    const date = new Date(2026, 8, day, 12, 0, 0);
+    const dayOfWeek = date.getDay();
+
+    if (dayOfWeek === 0) continue;
+
+    const hours = dayOfWeek === 6 ? saturdayHours : weekdayHours;
+    for (const hour of hours) {
+      slots.push(`${formatBookingDate(date)}, ${hour}`);
+    }
+  }
+
+  return slots;
 }
 
 export const washGoMockData = {
   weather: "lekki deszcz, 14°C",
-  bookingWindow: "rezerwacje do miesiąca do przodu",
+  bookingWindow: "cały wrzesień 2026",
   availableSlots: generateAvailableSlots(),
   seasonContext:
     "po deszczu klienci często odkładają mycie zewnętrzne, ale dobrze reagują na pranie tapicerki, ozonowanie i przygotowanie auta do sprzedaży",
